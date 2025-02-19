@@ -1,5 +1,7 @@
 # 4399Register
 
+### 注意！本项目需要搭配[boluoreg](https://github.com/boluoreg)组织中的其它项目使用！若你不想进行复杂的搭建，请使用[boluoreg/4399Register-legacy](https://github.com/boluoreg/4399Register-legacy)项目！
+
 ![logo_384x](https://github.com/user-attachments/assets/90ab389a-b270-426c-ae05-9000f761cd41)
 
 基于Python的纯协议4399全自动账号注册脚本
