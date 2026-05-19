@@ -19,6 +19,11 @@ from rich.text import Text
 from rich.box import HEAVY, ROUNDED
 from dotenv import load_dotenv
 import os
+import base64
+from hashlib import md5
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from faker import Faker
 
 load_dotenv()
 
@@ -48,14 +53,15 @@ THREADS = int(os.getenv('THREADS'))
 CAPTCHA_RETRY = int(os.getenv('CAPTCHA_RETRY'))
 
 
-headers = {
-    'User-Agent': USER_AGENT
-}
+if PROXY:
+    proxies = {
+        "http": PROXY,
+        "https": PROXY
+    }
+else:
+    proxies = {}
 
-proxies = {
-    "http": PROXY,
-    "https": PROXY
-}
+aes_key = "lzYW5qaXVqa"
 
 try:
     ocr = DdddOcr(use_gpu=True, show_ad=False, import_onnx_path=f"{OCR_FOLDER}/4399ocr.onnx",
@@ -65,6 +71,8 @@ try:
 except FileNotFoundError as e:
     console.print(f"[bold red]错误: 缺少必要文件: {e.filename}，请确保它在程序目录下。[/bold red]")
     exit()
+
+fake = Faker()
 
 def randstr(chars, length):
     return ''.join(sample(chars, length))
@@ -101,10 +109,33 @@ def get_elapsed_time():
     minutes, seconds = divmod(rem, 60)
     return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
 
+def evp_bytes_to_key(data, salt, key_len=32, iv_len=16):
+    derived = b""
+    last_block = b""
+    while len(derived) < (key_len + iv_len):
+        last_block = md5(last_block + data + salt).digest()
+        derived += last_block
+    return derived[:key_len], derived[key_len : key_len + iv_len]
+
+def encrypt_aes(plain_text, passphrase):
+    plain_bytes = plain_text.encode("utf-8")
+    passphrase_bytes = passphrase.encode("utf-8")
+    salt = os.urandom(8)
+    key, iv = evp_bytes_to_key(passphrase_bytes, salt, 32, 16)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    padded_data = pad(plain_bytes, AES.block_size)
+    encrypted = cipher.encrypt(padded_data)
+    result_bytes = b"Salted__" + salt + encrypted
+    return base64.b64encode(result_bytes).decode("utf-8")
+
 def register_4399(usr, pwd, count=1):
     try:
         sfz = choice(lines).strip()
         sfz_split = sfz.split(':')
+
+        headers = {
+            "User-Agent": fake.user_agent()
+        }
 
         sessionId = 'captchaReq' + randstr(captcha_strings, 19)
         captcha_response = requests.get(
@@ -116,14 +147,45 @@ def register_4399(usr, pwd, count=1):
         ).content
         captcha = ocr.classification(captcha_response)
 
+        headers["Referer"] = "https://ptlogin.4399.com/ptlogin/regFrame.do"
+
         data = {
-            'postLoginHandler': 'default', 'displayMode': 'popup', 'appId': 'www_home', 'gameId': '', 'cid': '',
-            'externalLogin': 'qq', 'aid': '', 'ref': '', 'css': '', 'redirectUrl': '', 'regMode': 'reg_normal',
-            'sessionId': sessionId, 'regIdcard': 'true', 'noEmail': '', 'crossDomainIFrame': '', 'crossDomainUrl': '',
-            'mainDivId': 'popup_reg_div', 'showRegInfo': 'true', 'includeFcmInfo': 'false', 'expandFcmInput': 'true',
-            'fcmFakeValidate': 'false', 'realnameValidate': 'true', 'username': usr, 'password': pwd,
-            'passwordveri': pwd, 'email': '', 'inputCaptcha': captcha, 'reg_eula_agree': 'on',
-            'realname': sfz_split[0], 'idcard': sfz_split[1]
+            "postLoginHandler": "default",
+            "displayMode": "popup",
+            "bizId": "",
+            "appId": "www_home",
+            "gameId": "",
+            "cid": "",
+            "externalLogin": "qq",
+            "aid": "",
+            "ref": "",
+            "css": "//www.4399.com/css/4399_index_skin.css",
+            "redirectUrl": "",
+            "regMode": "reg_normal",
+            "sessionId": "",
+            "regIdcard": "true",
+            "noEmail": "",
+            "crossDomainIFrame": "",
+            "crossDomainUrl": "",
+            "mainDivId": "popup_reg_div",
+            "showRegInfo": "true",
+            "includeFcmInfo": "false",
+            "expandFcmInput": "true",
+            "fcmFakeValidate": "false",
+            "realnameValidate": "true",
+            "userNameLabel": "4399用户名",
+            "level": "4",
+            "sec": "1",
+            "iframeId": "popup_reg_frame",
+            "email": "",
+            "reg_eula_agree": "on",
+            "autoLogin": "on",
+            "username": usr,
+            "password": encrypt_aes(pwd, aes_key),
+            "passwordveri": encrypt_aes(pwd, aes_key),
+            "realname": encrypt_aes(sfz_split[0], aes_key),
+            "idcard": encrypt_aes(sfz_split[1], aes_key),
+            "inputCaptcha": captcha
         }
 
         response = requests.post(
