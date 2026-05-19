@@ -5,4 +5,4 @@
 /split_accounts.py
 /*.bak  
 .env
-error200.html
+error*.html
